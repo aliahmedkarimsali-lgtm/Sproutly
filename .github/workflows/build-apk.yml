@@ -1,0 +1,54 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Unpack the project
+        run: unzip -q sprout_rewards.zip
+
+      - name: Create the Android shell
+        run: flutter create --org com.sproutly --project-name sprout_rewards --platforms android app
+
+      - name: Copy the app code in
+        run: |
+          rm -rf app/lib app/test
+          cp -r sprout_rewards/lib app/lib
+          cp sprout_rewards/pubspec.yaml app/pubspec.yaml
+
+      - name: Patch Android settings
+        working-directory: app
+        run: |
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/><application#' "$M"
+          sed -i 's#</application>#<meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-3940256099942544~3347511713"/></application>#' "$M"
+          sed -i 's#android:label="[^"]*"#android:label="Sprout Rewards"#' "$M"
+          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/; s/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle*
+
+      - name: Build the APK
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sprout-apk
+          path: app/build/app/outputs/flutter-apk/app-release.apk
